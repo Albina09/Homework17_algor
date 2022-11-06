@@ -10,23 +10,31 @@
 
 struct sockaddr_in serv;
 char buff[256];
+
 void errorExit(char err[]);
+
 void errorExit(char err[]){
     perror(err);
     exit(EXIT_FAILURE);
-} 
-
+}
 void *se(void *arg){
     int *fd =(int*)arg;
     char buff[256];
+    
     while(1){
         fgets(buff, sizeof(buff), stdin);
-        if(send(*fd, buff, sizeof(buff), 0) == -1) 
-            errorExit("send");
-        
-        if(strcmp(buff,"exit\n") == 0){
-            printf("Вы вышли\n");
+
+        if(strcmp(buff, "exit\n") == 0){
+
+            if(send(*fd, buff, strlen(buff), 0) == -1) 
+                errorExit("send");
+                
             pthread_exit(0);
+
+        }else{
+            if(send(*fd, buff, strlen(buff), 0) == -1) 
+                errorExit("send");
+                
         }
     }
 
@@ -35,11 +43,12 @@ void *se(void *arg){
 void *receive(void *arg){
     int *fd = (int*)arg;
     
+
     while(1){
         /*Принимает сообщение от сервера*/
         if (recv(*fd, buff, sizeof(buff), 0) == -1) 
             errorExit("recv");
-        
+            
         /*Выводит на экран*/
         printf("%s\n",buff);
     }
@@ -55,7 +64,7 @@ int main(){
     fd = socket(AF_INET,SOCK_STREAM,0);
     if(fd == -1)
         errorExit("soket");
-    
+        
     /*Инициализирую структуру*/
     serv.sin_family = AF_INET;
     serv.sin_port = htons(9024);
@@ -63,17 +72,14 @@ int main(){
     
     /*Соединяюсь с сервером*/
     len = sizeof(serv);
-    if (connect(fd, (struct sockaddr *)&serv, len) == -1) 
-        errorExit("connect");
-    
+    if (connect(fd, (struct sockaddr *)&serv, len) == -1)
+        errorExit("accept");
+        
     if(pthread_create(&thread[1], NULL, se, (void*)&fd) == -1)
-        errorExit("pthread_create");
-    
+        errorExit("accept");
+        
     if(pthread_create(&thread[0], NULL, receive, (void*)&fd) == -1)
         errorExit("pthread_create");
-    
-
-    
     
     pthread_join(thread[1], NULL);
     pthread_cancel(thread[0]);

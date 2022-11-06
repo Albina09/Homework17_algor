@@ -18,7 +18,7 @@ void errorExit(char err[]){
     perror(err);
     exit(EXIT_FAILURE);
 }
-
+pthread_t thread[2];
 void *server(void *arg){
     struct users user_lock = *(struct users*)arg;
     char buff[256];
@@ -44,26 +44,32 @@ void *server(void *arg){
 
 }
 
-void *out(){
-    
+void *connec(void *arg){
+    struct sockaddr_in client;
+    struct users user, user_lock;
+    int fd = *(int*)arg;
+    socklen_t len = sizeof(client);
+  
     while(1){
-        char ex[5];
+        user_lock.new_fd = accept(fd, (struct sockaddr *)&client, &len);
+        if(user_lock.new_fd == -1)
+            errorExit("accept");
+           
+        user.new_fd = user_lock.new_fd;
+        memcpy(&user.client, &user_lock.client, sizeof(user_lock.client));
 
-        fgets(ex, sizeof(ex), stdin);
-
-        if(strcmp(ex, "exit\n")){
-            pthread_exit(0);
-        }
+        if(pthread_create(&thread[0], NULL, server, &user) == -1)
+            errorExit("pthread_create");  
     }
+    pthread_join(thread[0], NULL);
 }
 
 int main(){
-    struct sockaddr_in serv, client;
-    struct users user, user_lock;
+    struct sockaddr_in serv;
     int fd;
-   
-    socklen_t len;
-    pthread_t thread[2];
+    char ex[5];
+    
+
     /*Создаёт сокет*/
     fd = socket(AF_INET, SOCK_STREAM, 0);
     if(fd == -1)
@@ -71,7 +77,7 @@ int main(){
         
     /*Инициализирует структуру*/
     serv.sin_family = AF_INET;
-    serv.sin_port = htons(9000);
+    serv.sin_port = htons(9005);
     serv.sin_addr.s_addr = htons(INADDR_ANY);
 
     /*Делает привязку*/
@@ -80,26 +86,17 @@ int main(){
         
     if (listen(fd, 5) == -1) 
         errorExit("listen");
-    len = sizeof(client);
+    
+    if(pthread_create(&thread[1], NULL, connec, &fd) == -1)
+            errorExit("pthread_create");  
 
-    while(1){
         
-        /*подключается к клиенту*/
-        user_lock.new_fd = accept(fd, (struct sockaddr *)&client, &len);
-        if(user_lock.new_fd == -1)
-            errorExit("accept");
-           
-        user.new_fd = user_lock.new_fd;
-        memcpy(&user.client, &user_lock.client, sizeof(user_lock.client));
-        if(pthread_create(&thread[0], NULL, server, &user) == -1)
-            errorExit("pthread_create");
-            
-        if(pthread_create(&thread[1], NULL, out, NULL) == -1)
-            errorExit("pthread_create");
-            
+    while(strcmp(fgets(ex, sizeof(ex), stdin), "exit") == 0){
+        pthread_cancel(thread[1]);
+        
+        close(fd);
+        exit(EXIT_SUCCESS);
     }
-    pthread_join(thread[1], NULL);
-    pthread_cancel(thread[0]);
-    close(fd);
-    exit(EXIT_SUCCESS);
+        
+    
 }

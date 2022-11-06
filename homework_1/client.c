@@ -20,17 +20,19 @@ void errorExit(char err[]){
 void *se(void *arg){
     int *fd =(int*)arg;
     char buff[256];
+    
     while(1){
         fgets(buff, sizeof(buff), stdin);
 
         if(strcmp(buff, "exit\n") == 0){
 
-            if(send(*fd, buff, sizeof(buff), 0) == -1) 
+            if(send(*fd, buff, strlen(buff), 0) == -1) 
                 errorExit("send");
                 
             pthread_exit(0);
+
         }else{
-            if(send(*fd, buff, sizeof(buff), 0) == -1) 
+            if(send(*fd, buff, strlen(buff), 0) == -1) 
                 errorExit("send");
                 
         }
@@ -65,7 +67,7 @@ int main(){
         
     /*Инициализирую структуру*/
     serv.sin_family = AF_INET;
-    serv.sin_port = htons(9000);
+    serv.sin_port = htons(9005);
     serv.sin_addr.s_addr = htons(INADDR_ANY);
     
     /*Соединяюсь с сервером*/

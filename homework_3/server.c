@@ -34,15 +34,7 @@ void errorExit(char err[]){
 } 
 
 void *out(){
-    char ex[5];
     
-    while(1){
-        fgets(ex, sizeof(ex), stdin);
-
-        if(strcmp(ex, "exit\n")){
-            pthread_exit(0);
-        }
-    }
 }
 
 void *server(void *arg){
@@ -105,11 +97,13 @@ void *connec(void *arg){
         if(mq_send(fd.mqd, (const char*)&user, sizeof(struct users), 0) == -1)
             errorExit("mq_send");
     }
-
+    for(int i = 0; i < M; i++){
+        pthread_join(thread[i], NULL);
+    }
 }
 
 int main(){
-    pthread_t thread_accpt,thread_out;
+    pthread_t thread_accpt;
     struct fdd fd;
     /*инициализируем очередь*/
     struct mq_attr attr;
@@ -143,18 +137,21 @@ int main(){
     if(pthread_create(&thread_accpt, NULL, connec, &fd) == -1)
         errorExit("pthread_create");
 
-    if(pthread_create(&thread_out, NULL, out, NULL) == -1)
-        errorExit("pthread_create");
-
-    pthread_join(thread_out,NULL);
-
-    for(int i = 0; i < M; i++){
-        pthread_cancel(thread[i]);
-    }
+    char ex[5];
     
-    pthread_cancel(thread_accpt,NULL);
-    close(fd.fd_sock);
-    unlink(fd.mqd);
-    exit(EXIT_SUCCESS);
+    while(1){
+        fgets(ex, sizeof(ex), stdin);
+
+        if(!strcmp(ex, "exit")){
+            pthread_cancel(thread_accpt);
+            close(fd.fd_sock);
+            mq_unlink(NAME);
+            exit(EXIT_SUCCESS);
+        }
+    }
+
+    
+    
+   
     
 }

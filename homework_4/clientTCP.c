@@ -21,7 +21,7 @@ void *se(void *arg){
     char buff[256];
     while(1){
         fgets(buff, sizeof(buff), stdin);
-        if(send(*fd, buff, sizeof(buff), 0) == -1) 
+        if(send(*fd, buff, strlen(buff), 0) == -1) 
             errorExit("send");
         
         if(strcmp(buff,"exit\n") == 0){

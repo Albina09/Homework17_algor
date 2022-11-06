@@ -34,6 +34,7 @@ mqd_t mqd;
 
 void errorExit(char err[]);
 int max(int x, int y);
+
 void errorExit(char err[]){
     perror(err);
     exit(EXIT_FAILURE);
@@ -46,74 +47,88 @@ int max(int x, int y){
         return y;
 }
 
-void *out(){
-        char ex[5];
-    while(1){
-        fgets(ex,sizeof(ex),stdin);
 
-        if(strcmp(ex,"exit\n")){
-            pthread_exit(0);
-        }
-    }
-}
 void *server(){
     char buff[256];
     struct fdd fd;
-    //while(1){
-        pthread_mutex_lock(&mutex);
-        if((mq_receive(mqd,(char *) &fd, sizeof(struct fdd), NULL)) == -1)
-            errorExit("mq_receive");
-        pthread_mutex_unlock(&mutex);
+    
+    pthread_mutex_lock(&mutex);
+    if((mq_receive(mqd,(char *) &fd, sizeof(struct fdd), NULL)) == -1)
+        errorExit("mq_receive");
+    pthread_mutex_unlock(&mutex);
 
-        if(FD_ISSET(fd.fd_TCP, &fd.readfds)){
-            int len = sizeof(fd.user.client);
+    if(FD_ISSET(fd.fd_TCP, &fd.readfds)){
+        int len = sizeof(fd.user.client);
 
-            fd.user.new_fd = accept(fd.fd_TCP, (struct sockaddr *)&fd.user.client, &len);
-            if(fd.user.new_fd == -1)
-                errorExit("accept");
+        fd.user.new_fd = accept(fd.fd_TCP, (struct sockaddr *)&fd.user.client, &len);
+        if(fd.user.new_fd == -1)
+            errorExit("accept");
                 
-            while(1){
-                char msg[256] = "Сервер получил: ";
+        while(1){
+            char msg[256] = "Сервер получил: ";
 
-                if (recv(fd.user.new_fd, buff, sizeof(buff), 0) == -1) 
-                    errorExit("recv");
+            if (recv(fd.user.new_fd, buff, sizeof(buff), 0) == -1) 
+                errorExit("recv");
 
-                if(strcmp(buff,"exit\n") != 0){
-                    strcat(msg, buff);
-                    printf("%s\n",buff);
+            if(strcmp(buff,"exit\n") != 0){
+                strcat(msg, buff);
+                printf("%s\n",buff);
 
-                    if(send(fd.user.new_fd, msg, sizeof(msg), 0) == -1) 
-                        errorExit("send");
-                }else{
-                    printf("%s\n", buff);            
-                }
-
-            }
-        } 
-        if(FD_ISSET(fd.fd_UDP,&fd.readfds)){
-            int size = sizeof(fd.user.client);
-            while(1){
-                char msg[256] = "Сервер получил: ";
-                
-                if (recvfrom(fd.fd_UDP, buff, sizeof(buff), 0, (struct sockaddr *)&fd.user.client, &size) == -1)
-                    errorExit("recvfrom");
-
-                if(strcmp(buff,"exit\n") != 0){
-                    strcat(msg, buff);
-                    printf("%s\n",buff);
-
-                    if(sendto(fd.fd_UDP, msg, sizeof(msg), 0, (struct sockaddr *)&fd.user.client, size) == -1)
-                        errorExit("sendto");
-                }else{
-                    printf("%s\n", buff);    
-                }
-            }
+                if(send(fd.user.new_fd, msg, strlen(msg), 0) == -1) 
+                    errorExit("send");
+            }else{
+                printf("%s\n", buff);
+                pthread_exit(0);
+            }            
         }
-    //}
+    } 
+    
+    if(FD_ISSET(fd.fd_UDP,&fd.readfds)){
+        int size = sizeof(fd.user.client);
+        while(1){
+            char msg[256] = "Сервер получил: ";
+                
+            if (recvfrom(fd.fd_UDP, buff, sizeof(buff), 0, (struct sockaddr *)&fd.user.client, &size) == -1)
+                errorExit("recvfrom");
+
+            if(strcmp(buff,"exit\n") != 0){
+                strcat(msg, buff);
+                printf("%s\n",buff);
+
+                if(sendto(fd.fd_UDP, msg, strlen(msg), 0, (struct sockaddr *)&fd.user.client, size) == -1)
+                    errorExit("sendto");
+            }else{
+                printf("%s\n", buff);
+                pthread_exit(0);
+            }    
+        }
+    }
+    
+}
+
+void *connec(void *arg){
+    struct fdd fd = *(struct fdd*)arg;
+    int fd_max = max(fd.fd_TCP, fd.fd_UDP) + 1; 
+      
+    while(1){
+        FD_ZERO(&fd.readfds);
+     
+        FD_SET(fd.fd_TCP,&fd.readfds);
+        FD_SET(fd.fd_UDP,&fd.readfds);
+
+        if(select(fd_max, &fd.readfds, NULL, NULL, NULL) == -1)
+            errorExit("select");
+        else{
+        
+            if(mq_send(mqd, (const char*)&fd, sizeof(struct fdd), 0) == -1)
+            errorExit("mq_send");
+        }
+    }
+        
 }
 
 int main(){
-    pthread_t thread_accpt,thread_out;
+    pthread_t thr_conn;
     struct fdd fd;
 
     struct timeval tv;
@@ -144,8 +159,6 @@ int main(){
         errorExit("listen");
 
 
-
-
     /*открываем сокет UDP*/
     fd.fd_UDP = socket(AF_INET, SOCK_DGRAM, 0);
     if(fd.fd_UDP == -1)
@@ -172,57 +185,25 @@ int main(){
             errorExit("pthread_create");
     }
 
-    
-    
-    int fd_max = max(fd.fd_TCP, fd.fd_UDP) + 1; 
-      
-    while(1){
-        FD_ZERO(&fd.readfds);
-     
-        FD_SET(fd.fd_TCP,&fd.readfds);
-        FD_SET(fd.fd_UDP,&fd.readfds);
-
-        if(select(fd_max, &fd.readfds, NULL, NULL, NULL) == -1)
-            errorExit("select");
-        else{
-        /*if(FD_ISSET(fd.fd_TCP,&fd.readfds)){
-            //fd.user.new_fd = accept(fd.fd_TCP, (struct sockaddr *)&fd.user.client, &len);
-            //if(fd.user.new_fd == -1)
-              //  errorExit("accept");
-        
-        if(mq_send(mqd, (const char*)&fd, sizeof(struct fdd), 0) == -1)
-            errorExit("mq_send");
-        }
-        if(FD_ISSET(fd.fd_UDP,&fd.readfds)){*/
-            if(mq_send(mqd, (const char*)&fd, sizeof(struct fdd), 0) == -1)
-            errorExit("mq_send");
-        }
-    }
-
-
-
-
-
-
-
-
-
-
-
-
-    if(pthread_create(&thread_out, NULL, out, NULL) == -1)
+    if(pthread_create(&thr_conn, NULL, connec, &fd) == -1)
             errorExit("pthread_create");
-
-    pthread_join(thread_out,NULL);
-    for(int i = 0; i < M; i++){
-        pthread_cancel(thread[i]);
-    }
     
-    //pthread_cancel(thread_accpt,NULL);
-    close(fd.fd_TCP);
-    close(fd.fd_UDP);
-    unlink(NAME);
-    exit(EXIT_SUCCESS);
+    char ex[5];
+    while(1){
+        fgets(ex,sizeof(ex),stdin);
+
+        if(!strcmp(ex,"exit")){
+            for(int i = 0; i < M; i++)
+                pthread_cancel(thread[i]);
+            
+            pthread_cancel(thr_conn);
+            close(fd.fd_TCP);
+            close(fd.fd_UDP);
+            unlink(NAME);
+            
+            exit(EXIT_SUCCESS);
+        }
+    }
     
 }
 
